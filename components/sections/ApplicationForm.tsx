@@ -346,7 +346,12 @@ export function ApplicationForm() {
               {...register("authorized")}
               id="authorized"
               type="checkbox"
-              value="true"
+              // No `value` attribute. react-hook-form returns a checkbox's
+              // `value` string when it is checked, so `value="true"` made this
+              // resolve to the *string* "true" — which z.boolean() rejects with
+              // "Invalid input" the moment the box was ticked. Without it RHF
+              // yields a real boolean. onSubmit stringifies for FormData and the
+              // route compares against "true", so the wire format is unchanged.
               aria-invalid={Boolean(errors.authorized)}
               aria-describedby={errors.authorized ? "authorized-error" : undefined}
               className="mt-1 h-4 w-4 shrink-0 accent-[var(--color-foreground)]"
@@ -388,7 +393,7 @@ export function ApplicationForm() {
               {...register("contactConsent")}
               id="contactConsent"
               type="checkbox"
-              value="true"
+              // Same reason as the authorization box above — no `value`.
               className="mt-1 h-4 w-4 shrink-0 accent-[var(--color-foreground)]"
             />
             <span className="text-base text-foreground">
