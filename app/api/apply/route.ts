@@ -43,6 +43,11 @@ const MIN_FILL_MS = 3_000;
  *      duration of the request and are dropped.
  *   3. Never echo submitted values back in a response, including in validation
  *      errors — return the field name and a static message.
+ *   4. The confirmation to the applicant is the one place a submitted value is
+ *      sent anywhere other than the team inbox. It carries the business name and
+ *      first name only — never the SSN, date of birth, phone, or statement
+ *      contents — because it lands in a mailbox we neither control nor can vouch
+ *      for. Adding a field there is a privacy decision, not a formatting one.
  */
 
 export async function POST(request: Request) {
@@ -130,6 +135,11 @@ export async function POST(request: Request) {
     );
   }
 
+  // Second arg is the base URL, for self-hosted instances. Omitted (undefined)
+  // it falls back to the managed cloud at app.usesend.com. Hoisted out of the
+  // try below so the applicant confirmation can reuse the same client.
+  const usesend = new UseSend(apiKey, process.env.USESEND_URL);
+
   try {
     const attachments = await Promise.all(
       statements.map(async (file) => ({
@@ -138,10 +148,6 @@ export async function POST(request: Request) {
         content: Buffer.from(await file.arrayBuffer()).toString("base64"),
       }))
     );
-
-    // Second arg is the base URL, for self-hosted instances. Omitted (undefined)
-    // it falls back to the managed cloud at app.usesend.com.
-    const usesend = new UseSend(apiKey, process.env.USESEND_URL);
 
     const { error } = await usesend.emails.send({
       to: TO_EMAIL,
@@ -179,6 +185,36 @@ export async function POST(request: Request) {
   }
 
   console.log("[apply] Application delivered.");
+
+  // --- Confirmation to the applicant (best effort) ---------------------------
+  // Deliberately last and deliberately non-fatal. The application has already
+  // reached the team by this point, so a confirmation that fails to send is a
+  // worse experience, not a lost deal — it must never turn a delivered
+  // application into an error the applicant sees and then retries, which would
+  // land the same deal in the inbox twice.
+  try {
+    const { error } = await usesend.emails.send({
+      to: parsed.data.email,
+      from: FROM_EMAIL,
+      // A reply to the confirmation should reach the team, not this app.
+      replyTo: TO_EMAIL,
+      subject: "We received your application — Miracle Advance",
+      text: buildConfirmationBody(parsed.data, statements, signedAt),
+    });
+
+    if (error) {
+      console.error(
+        "[apply] Confirmation to the applicant failed:",
+        describeSendError(error)
+      );
+    }
+  } catch (cause) {
+    console.error(
+      "[apply] Confirmation to the applicant threw:",
+      cause instanceof Error ? cause.message : "unknown error"
+    );
+  }
+
   return NextResponse.json({ ok: true });
 }
 
@@ -255,6 +291,67 @@ function buildEmailBody(
     "",
     "─".repeat(72),
     `AUTHORIZATION TEXT ACCEPTED BY THE APPLICANT (version ${AUTHORIZATION_VERSION})`,
+    "─".repeat(72),
+    "",
+    authorizationPlainText(),
+  ].join("\n");
+}
+
+/**
+ * Confirmation sent to the applicant, at the address they entered.
+ *
+ * Two rules govern what goes in here. It must not restate anything sensitive —
+ * this lands in a mailbox we neither control nor can vouch for, so the SSN, date
+ * of birth, phone number, and statement filenames all stay out (rule 4 of the
+ * privacy contract at the top of this file). And it must not read as a decision:
+ * an applicant who mistakes a receipt for an approval was misled by us, not by
+ * themselves, which is why the "not an approval" line is not optional.
+ *
+ * The authorization copy is not padding. Clause 6 has the applicant consent to
+ * receive these records electronically; actually sending one is what makes that
+ * clause true rather than decorative, and it leaves them holding the exact
+ * version they agreed to rather than whatever the site says later.
+ */
+function buildConfirmationBody(
+  application: Application,
+  statements: File[],
+  signedAt: string
+) {
+  const { firstName, legalBusinessName, contactConsent } = application;
+  const count = statements.length;
+
+  return [
+    `Thank you for applying to Miracle Advance, ${firstName}.`,
+    "",
+    "We have received your application and your bank statements. Our",
+    "underwriting team is reviewing them now, and someone will be in touch",
+    "within one business day.",
+    "",
+    `  Business:    ${legalBusinessName}`,
+    `  Statements:  ${count} file${count === 1 ? "" : "s"} received`,
+    `  Submitted:   ${signedAt} ET`,
+    "",
+    "This message confirms receipt only. It is not an approval, an offer of",
+    "financing, or a commitment to fund.",
+    "",
+    // Second person on purpose. The CONTACT_CONSENT_* constants are written in
+    // the applicant's voice for the form ("I authorize…"), which reads wrong in
+    // a message addressed to them — so this is worded here rather than reused.
+    ...(contactConsent
+      ? [
+          "You also agreed to receive calls and text messages about this",
+          "application. You can withdraw that consent at any time by replying",
+          "to this email.",
+          "",
+        ]
+      : []),
+    "Questions? Reply to this email or call (786) 902-2025.",
+    "",
+    "— Miracle Advance LLC",
+    "",
+    "─".repeat(72),
+    "YOUR COPY OF THE AUTHORIZATION YOU SIGNED",
+    `Version ${AUTHORIZATION_VERSION} · signed ${signedAt} ET`,
     "─".repeat(72),
     "",
     authorizationPlainText(),

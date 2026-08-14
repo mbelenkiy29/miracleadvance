@@ -163,9 +163,32 @@ The route pins `runtime = "nodejs"` (Buffer/base64 for attachments) and
 ### Email delivery
 
 Sent through [useSend](https://docs.usesend.com) (`usesend-js`), an open-source
-Resend alternative. One email per submission, plain text, with the statements
-attached and `replyTo` set to the applicant so replying from the inbox reaches
-them directly.
+Resend alternative. **Two plain-text emails per submission:**
+
+1. **The application**, to `APPLICATION_TO_EMAIL`, with the bank statements
+   attached and `replyTo` set to the applicant so replying from the inbox reaches
+   them directly.
+2. **A confirmation to the applicant**, at the address they entered, with
+   `replyTo` set to the team inbox. It carries a receipt (business name, file
+   count, timestamp), an explicit "not an approval" line, and a copy of the
+   authorization text they signed with its version — which is what makes clause 6
+   of `lib/authorization-text.ts` true rather than decorative, since the applicant
+   consents there to receiving these records electronically.
+
+The confirmation is **best effort and deliberately non-fatal**: it is sent after
+the application has already reached the team, and a failure is logged but never
+converted into an error response. Returning a failure at that point would push the
+applicant to resubmit and land the same deal in the inbox twice.
+
+The confirmation never contains the SSN, date of birth, phone number, or statement
+filenames — see rule 4 of the privacy contract at the top of
+`app/api/apply/route.ts`. Adding a field there is a privacy decision, not a
+formatting one.
+
+Note this means the form emails an **applicant-supplied address**, the standard
+abuse vector for contact forms. The honeypot, the 3-second `MIN_FILL_MS` floor,
+and the required file attachment are the current mitigations; Vercel BotID is the
+escalation if spam ever appears.
 
 | Env var | Purpose |
 |---|---|
@@ -178,6 +201,33 @@ them directly.
 the domain at `app.usesend.com/domains` and publish the DKIM/SPF records it
 gives you. Until that is green, sends fail and applicants get the "call us"
 fallback — the form itself will look like it is working right up to that point.
+
+**DNS for `miracleadvancellc.com` is authoritative at Vercel, not Squarespace.**
+The nameservers are `ns1`/`ns2.vercel-dns.com`, so records must be added with
+`vercel dns add` (or the Vercel dashboard). The domain also has a Squarespace DNS
+panel that still lists a full set of mail records; **it is inert** and Squarespace
+says so in a banner most people scroll past:
+
+> You're using custom nameservers. Your DNS records are managed with your
+> third-party nameserver provider.
+
+This cost a full debugging session once. The records looked right in Squarespace,
+`dig` returned nothing, useSend reported the domain unverified, and mail to
+`deals@` had no MX to land on. If you edit mail records, edit them at Vercel and
+confirm with `dig`, not by reading a provider's UI.
+
+Current records (`vercel dns ls miracleadvancellc.com`):
+
+| Name | Type | Purpose |
+|---|---|---|
+| `@` | MX | `smtp.google.com` — Google Workspace inbound, makes `deals@` reachable |
+| `mail` | MX | SES bounce/complaint endpoint for the useSend MAIL FROM subdomain |
+| `@` | TXT | SPF for Google (`From:` on the apex) |
+| `mail` | TXT | SPF for Amazon SES (the envelope sender useSend actually bounces through) |
+| `usesend._domainkey` | TXT | useSend/SES DKIM |
+| `_dmarc` | TXT | `p=none` — monitor only |
+
+The two SPF records do not conflict: they cover different names on purpose.
 
 ### Spam
 
@@ -207,8 +257,18 @@ announced rather than only seen.
   mode — forget it at launch and the site never gets indexed. See *Before going
   public* above.
 - **Testimonials** are placeholder copy, marked `// TODO: replace with client-approved testimonials`.
-- **`USESEND_API_KEY` is not set and the sending domain is not verified**, so the
-  application form cannot deliver mail yet. See *Contact form → Email delivery*.
+- ~~The useSend sending domain is not verified.~~ **Resolved.** The domain is
+  verified, DNS is published at Vercel, and a submission delivers end to end.
+  `APPLICATION_TO_EMAIL` was deliberately *removed* from Vercel rather than set,
+  so the destination falls through to the code default in `app/api/apply/route.ts`
+  and stays visible in the repo.
+- **`USESEND_API_KEY` is not available locally.** It is stored as a Vercel
+  *Sensitive* variable, which cannot target the Development environment and
+  cannot be read back — so `vercel env pull` will never supply it. Add it to
+  `.env.local` by hand or the form returns 503 on localhost regardless of what
+  production does.
+- ~~`google._domainkey` is not published.~~ **Resolved** — Google Workspace DKIM
+  is published at Vercel and resolving.
 - **CTAs** point at `#qualifier` or `tel:+17869022025`; the qualifier's submit CTA dials the sales line rather than posting anywhere.
 - **`siteUrl`** in `app/layout.tsx` is `https://miracleadvancellc.com`. Update it if the production domain differs — it drives canonical, Open Graph, and JSON-LD `@id` values.
 - **Open Graph image** is not set. Drop an `app/opengraph-image.png` (1200×630) and Next will wire it up automatically.

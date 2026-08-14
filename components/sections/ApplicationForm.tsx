@@ -596,6 +596,16 @@ function SuccessPanel({
         response within one business day.
       </motion.p>
 
+      {/*
+        The route sends a confirmation to the address on the application. Saying
+        so here is what makes a missing email legible as a problem worth calling
+        about, rather than something the applicant assumes is normal.
+      */}
+      <motion.p className="mt-4 max-w-md text-muted-foreground" {...rise(0.78)}>
+        A confirmation is on its way to the email address you provided, with a copy
+        of the authorization you signed.
+      </motion.p>
+
       <motion.p className="mt-6 text-sm text-muted" {...rise(0.84)}>
         Need it sooner? Call{" "}
         <a
