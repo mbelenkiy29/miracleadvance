@@ -101,6 +101,38 @@ export const applicationSchema = z
     legalBusinessName: requiredText("Legal business name").pipe(
       z.string().min(2, "Legal business name must be at least 2 characters.")
     ),
+    ein: z
+      .string()
+      .trim()
+      .max(20, "EIN must be 20 characters or fewer.")
+      .optional()
+      .default("")
+      // Both rules below pass on an empty string on purpose. Whether empty is
+      // *allowed* depends on noEin, which only the object-level refine at the
+      // bottom can see — these two describe what a well-formed EIN looks like
+      // and nothing more. That also keeps them safe under the Zod 4 behaviour
+      // documented above `pastDate`: the whole chain runs even after a failure,
+      // so every rule here has to survive input the previous one rejected.
+      .refine((value) => value === "" || digits(value).length === 9, {
+        error: "EIN must be 9 digits.",
+      })
+      .refine(
+        (value) => {
+          const ein = digits(value);
+          // Prefix 00 was never issued, and nine of the same digit is
+          // placeholder junk — the same cheap structural check the SSN rule
+          // below applies, for the same reason. Deliberately *not* validating
+          // the prefix against the IRS campus list: that list tracks campuses
+          // currently issuing, while an EIN issued under a since-retired prefix
+          // stays valid forever, so checking it would reject real businesses.
+          return ein.slice(0, 2) !== "00" && !/^(\d)\1{8}$/.test(ein);
+        },
+        { error: "That is not a valid EIN." }
+      ),
+    // Waives the EIN requirement for sole proprietors and single-member LLCs,
+    // who often have none and apply on their SSN alone. Same shape as
+    // contactConsent — optional, defaulting to false.
+    noEin: z.boolean().optional().default(false),
     dba: z
       .string()
       .trim()
@@ -189,7 +221,14 @@ export const applicationSchema = z
       error: "Type your full legal name exactly as entered above.",
       path: ["signature"],
     }
-  );
+  )
+  .refine((data) => data.noEin || digits(data.ein).length > 0, {
+    // This is the rule that makes the EIN required — it lives at the object
+    // level because it is the only place both values are visible. The field's
+    // own refines above cannot express "required unless waived".
+    error: "Enter the business EIN, or tick the sole-proprietor box.",
+    path: ["ein"],
+  });
 
 export type ApplicationInput = z.input<typeof applicationSchema>;
 export type Application = z.output<typeof applicationSchema>;
@@ -244,6 +283,12 @@ export function formatBytes(bytes: number) {
 export function formatPhone(value: string) {
   const phone = digits(value).slice(-10);
   return `(${phone.slice(0, 3)}) ${phone.slice(3, 6)}-${phone.slice(6)}`;
+}
+
+/** `123456789` -> `12-3456789`, for the email body. */
+export function formatEin(value: string) {
+  const ein = digits(value);
+  return `${ein.slice(0, 2)}-${ein.slice(2)}`;
 }
 
 /** `123456789` -> `123-45-6789`, for the email body. */

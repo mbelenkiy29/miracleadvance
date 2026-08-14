@@ -136,12 +136,27 @@ server. Files are the one exception — `validateStatements()` is a plain functi
 next to the schema, called from both places, because `File` does not belong in a
 type shared with client-side inference.
 
-**Fields.** Legal business name, DBA (optional), business start date; owner first
-and last name, date of birth, SSN, email, phone; last three months of bank
+**Fields.** Legal business name, EIN, DBA (optional), business start date; owner
+first and last name, date of birth, SSN, email, phone; last three months of bank
 statements (PDF/JPG/PNG, ≤6 files, ≤10MB total); an authorization checkbox; and a
 typed-name electronic signature. The signature must contain the first and last
 name entered above — token matching, not string equality, so a middle name or
 initial still signs.
+
+**The EIN is required, with one escape hatch.** An "I'm a sole proprietor and
+don't have an EIN" checkbox waives it, because sole proprietors and single-member
+LLCs frequently have none and apply on their SSN alone — a hard requirement would
+turn them away at the form. Ticking it clears and disables the EIN input, so a
+half-typed number cannot linger and contradict the waiver, and the underwriting
+email reads `None (sole proprietor, per applicant)` rather than showing a blank.
+"per applicant" is deliberate: the waiver is an unverified claim.
+
+Validation is structural only — nine digits, no `00` prefix, no repeated-digit
+junk. It deliberately does **not** check the two-digit prefix against the IRS
+campus list: that list tracks campuses *currently issuing*, while an EIN issued
+under a since-retired prefix stays valid forever, so checking it would reject
+real, older businesses. Nothing verifies the number against the IRS or any
+registry.
 
 ### Handling of sensitive data
 
@@ -180,10 +195,12 @@ the application has already reached the team, and a failure is logged but never
 converted into an error response. Returning a failure at that point would push the
 applicant to resubmit and land the same deal in the inbox twice.
 
-The confirmation never contains the SSN, date of birth, phone number, or statement
-filenames — see rule 4 of the privacy contract at the top of
+The confirmation never contains the SSN, EIN, date of birth, phone number, or
+statement filenames — see rule 4 of the privacy contract at the top of
 `app/api/apply/route.ts`. Adding a field there is a privacy decision, not a
-formatting one.
+formatting one. The EIN is excluded even though it is not personal data: it is
+the primary identifier for business credit fraud, and that email goes to an
+address nobody has verified.
 
 Note this means the form emails an **applicant-supplied address**, the standard
 abuse vector for contact forms. The honeypot, the 3-second `MIN_FILL_MS` floor,

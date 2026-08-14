@@ -8,6 +8,7 @@ import {
 import {
   applicationSchema,
   formatDate,
+  formatEin,
   formatPhone,
   formatSsn,
   validateStatements,
@@ -45,9 +46,11 @@ const MIN_FILL_MS = 3_000;
  *      errors — return the field name and a static message.
  *   4. The confirmation to the applicant is the one place a submitted value is
  *      sent anywhere other than the team inbox. It carries the business name and
- *      first name only — never the SSN, date of birth, phone, or statement
+ *      first name only — never the SSN, EIN, date of birth, phone, or statement
  *      contents — because it lands in a mailbox we neither control nor can vouch
  *      for. Adding a field there is a privacy decision, not a formatting one.
+ *      The EIN is named here on purpose: it is the primary identifier for
+ *      business credit fraud, so it stays out even though it is not personal.
  */
 
 export async function POST(request: Request) {
@@ -74,6 +77,8 @@ export async function POST(request: Request) {
   // --- Validation -----------------------------------------------------------
   const parsed = applicationSchema.safeParse({
     legalBusinessName: form.get("legalBusinessName") ?? "",
+    ein: form.get("ein") ?? "",
+    noEin: form.get("noEin") === "true",
     dba: form.get("dba") ?? "",
     businessStartDate: form.get("businessStartDate") ?? "",
     firstName: form.get("firstName") ?? "",
@@ -249,6 +254,8 @@ function buildEmailBody(
 ) {
   const {
     legalBusinessName,
+    ein,
+    noEin,
     dba,
     businessStartDate,
     firstName,
@@ -267,6 +274,11 @@ function buildEmailBody(
     "",
     "BUSINESS",
     `  Legal business name:  ${legalBusinessName}`,
+    // "per applicant" is load-bearing: the waiver is an unverified claim the
+    // applicant made, not something this form established.
+    `  EIN:                  ${
+      noEin ? "None (sole proprietor, per applicant)" : formatEin(ein)
+    }`,
     `  DBA:                  ${dba || "—"}`,
     `  Business start date:  ${formatDate(businessStartDate)}`,
     "",
