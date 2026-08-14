@@ -189,6 +189,38 @@ export function ApplicationForm() {
             />
           </Field>
 
+          <Field label="DBA, if applicable" name="dba" error={errors.dba?.message} optional>
+            <input
+              {...register("dba")}
+              id="dba"
+              type="text"
+              aria-invalid={Boolean(errors.dba)}
+              aria-describedby={errors.dba ? "dba-error" : undefined}
+              className={FIELD_CLASS}
+            />
+          </Field>
+
+          <Field
+            label="Business start date"
+            name="businessStartDate"
+            error={errors.businessStartDate?.message}
+          >
+            <input
+              {...register("businessStartDate")}
+              id="businessStartDate"
+              type="date"
+              aria-invalid={Boolean(errors.businessStartDate)}
+              aria-describedby={
+                errors.businessStartDate ? "businessStartDate-error" : undefined
+              }
+              className={FIELD_CLASS}
+            />
+          </Field>
+
+          {/* Last in the section on purpose. Legal name into DBA is the natural
+              business-identity sequence, and a tax ID sitting between them
+              interrupts it — so the EIN follows the names rather than splitting
+              them. */}
           <Field
             label="EIN"
             name="ein"
@@ -233,34 +265,6 @@ export function ApplicationForm() {
               </span>
             </label>
           </div>
-
-          <Field label="DBA, if applicable" name="dba" error={errors.dba?.message} optional>
-            <input
-              {...register("dba")}
-              id="dba"
-              type="text"
-              aria-invalid={Boolean(errors.dba)}
-              aria-describedby={errors.dba ? "dba-error" : undefined}
-              className={FIELD_CLASS}
-            />
-          </Field>
-
-          <Field
-            label="Business start date"
-            name="businessStartDate"
-            error={errors.businessStartDate?.message}
-          >
-            <input
-              {...register("businessStartDate")}
-              id="businessStartDate"
-              type="date"
-              aria-invalid={Boolean(errors.businessStartDate)}
-              aria-describedby={
-                errors.businessStartDate ? "businessStartDate-error" : undefined
-              }
-              className={FIELD_CLASS}
-            />
-          </Field>
         </div>
       </fieldset>
 
