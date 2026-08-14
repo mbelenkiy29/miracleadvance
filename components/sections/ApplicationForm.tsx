@@ -61,11 +61,26 @@ export function ApplicationForm() {
     register,
     handleSubmit,
     setError,
+    setValue,
+    clearErrors,
+    watch,
     formState: { errors, isSubmitting },
   } = useForm<ApplicationInput>({
     resolver: zodResolver(applicationSchema),
     mode: "onBlur",
   });
+
+  // Waiving the EIN has to clear the field as well as disable it. Without this a
+  // half-typed EIN survives in form state and gets submitted alongside the
+  // waiver, so the underwriting email would show both a number and "sole
+  // proprietor" — two claims that contradict each other.
+  const noEin = watch("noEin");
+  React.useEffect(() => {
+    if (noEin) {
+      setValue("ein", "");
+      clearErrors("ein");
+    }
+  }, [noEin, setValue, clearErrors]);
 
   // Announce the success panel to screen readers and put the keyboard caret
   // somewhere sensible — the form that had focus no longer exists.
@@ -173,6 +188,51 @@ export function ApplicationForm() {
               className={FIELD_CLASS}
             />
           </Field>
+
+          <Field
+            label="EIN"
+            name="ein"
+            error={errors.ein?.message}
+            hint="The 9-digit federal tax ID on your IRS EIN confirmation letter."
+            className="sm:col-span-2"
+          >
+            <input
+              {...register("ein")}
+              id="ein"
+              type="text"
+              inputMode="numeric"
+              autoComplete="off"
+              placeholder="12-3456789"
+              disabled={Boolean(noEin)}
+              aria-invalid={Boolean(errors.ein)}
+              aria-describedby={cn("ein-hint", errors.ein && "ein-error")}
+              className={cn(
+                FIELD_CLASS,
+                "font-mono",
+                "disabled:cursor-not-allowed disabled:bg-background disabled:text-muted"
+              )}
+            />
+          </Field>
+
+          {/* Deliberately not CHECKBOX_CLASS. That bordered treatment is
+              reserved for the two legally significant consent boxes below;
+              giving a field modifier the same weight would flatten the
+              distinction between "this changes a field" and "this is what you
+              are agreeing to." */}
+          <div className="sm:col-span-2 -mt-2">
+            <label htmlFor="noEin" className="flex cursor-pointer items-start gap-3">
+              <input
+                {...register("noEin")}
+                id="noEin"
+                type="checkbox"
+                // No `value` attribute — see the authorization checkbox below.
+                className="mt-1 h-4 w-4 shrink-0 accent-[var(--color-foreground)]"
+              />
+              <span className="text-sm text-muted-foreground">
+                I&rsquo;m a sole proprietor and don&rsquo;t have an EIN.
+              </span>
+            </label>
+          </div>
 
           <Field label="DBA, if applicable" name="dba" error={errors.dba?.message} optional>
             <input
